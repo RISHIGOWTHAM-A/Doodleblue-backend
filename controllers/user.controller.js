@@ -1,153 +1,142 @@
 const userServices = require("../services/user.services");
 
 class UserController {
-    async signup(req, res) {
-        try {
-            const { name, email, password } = req.body;
+  // 1. Signup: credentials + role (student or faculty)
+  async signup(req, res) {
+    try {
+      const { name, email, password, role } = req.body;
+      if (!name || !email || !password || !role) {
+        return res.status(400).json({ message: "All fields are required (name, email, password, role)" });
+      }
+      if (!["student", "faculty"].includes(role)) {
+        return res.status(400).json({ message: "Role must be 'student' or 'faculty'" });
+      }
 
-            if (!name || !email || !password) {
-                return res.status(400).json({
-                    message: "Name, email, and password are required",
-                });
-            }
-
-            const user = await userServices.createUser({ name, email, password });
-            const userResponse = user.toObject();
-            delete userResponse.password;
-
-            return res.status(201).json({
-                message: "User created successfully",
-                user: userResponse,
-            });
-        } catch (error) {
-            console.error("Error in signup controller:", error);
-
-            if (error.code === 11000) {
-                return res.status(409).json({
-                    message: "Email is already registered",
-                });
-            }
-
-            return res.status(500).json({
-                message: "Unable to create user",
-            });
-        }
+      const user = await userServices.signup({ name, email, password, role });
+      res.status(201).json({ message: "Signup successful", user });
+    } catch (error) {
+      res.status(400).json({ message: error.message });
     }
+  }
 
-    async login(req, res) {
-        try {
-            const { email, password } = req.body;
+  // 2. Login: role is passed as payload in JWT token
+  async login(req, res) {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
+      }
 
-            if (!email || !password) {
-                return res.status(400).json({
-                    message: "Email and password are required",
-                });
-            }
-
-            const { user, token } = await userServices.login(email, password);
-
-            return res.status(200).json({
-                message: "User logged in successfully",
-                user,
-                token,
-            });
-        } catch (error) {
-            console.error("Error in login controller:", error);
-            return res.status(401).json({
-                message: "Invalid email or password",
-            });
-        }
+      const result = await userServices.login(email, password);
+      res.status(200).json({ message: "Login successful", ...result });
+    } catch (error) {
+      const status = error.message.includes("deleted") ? 403 : 401;
+      res.status(status).json({ message: error.message });
     }
+  }
 
-    async update(req, res) {
-        try {
-            if (req.user.id !== req.params.id) {
-                return res.status(403).json({
-                    message: "You can only update your own account",
-                });
-            }
-
-            const allowedFields = ["name", "email", "password"];
-            const updates = Object.fromEntries(
-                Object.entries(req.body).filter(([key]) => allowedFields.includes(key))
-            );
-
-            if (Object.keys(updates).length === 0) {
-                return res.status(400).json({
-                    message: "At least one of name, email, or password is required",
-                });
-            }
-
-            const user = await userServices.updateUser(req.params.id, updates);
-            return res.status(200).json({
-                message: "User updated successfully",
-                user,
-            });
-        } catch (error) {
-            console.error("Error in update controller:", error);
-
-            if (error.code === 11000) {
-                return res.status(409).json({
-                    message: "Email is already registered",
-                });
-            }
-
-            if (error.name === "ValidationError") {
-                return res.status(400).json({
-                    message: error.message,
-                });
-            }
-
-            if (error.name === "CastError") {
-                return res.status(400).json({
-                    message: "Invalid user id",
-                });
-            }
-
-            if (error.message === "User not found") {
-                return res.status(404).json({
-                    message: "User not found",
-                });
-            }
-
-            return res.status(500).json({
-                message: "Unable to update user",
-            });
-        }
+  // 3. View own profile after login
+  async getProfile(req, res) {
+    try {
+      const user = await userServices.getProfile(req.user.id);
+      res.status(200).json({ user });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
     }
+  }
 
-    async delete(req, res) {
-        try {
-            if (req.user.id !== req.params.id) {
-                return res.status(403).json({
-                    message: "You can only delete your own account",
-                });
-            }
-
-            await userServices.deleteUser(req.params.id);
-            return res.status(200).json({
-                message: "User deleted successfully",
-            });
-        } catch (error) {
-            console.error("Error in delete controller:", error);
-
-            if (error.name === "CastError") {
-                return res.status(400).json({
-                    message: "Invalid user id",
-                });
-            }
-
-            if (error.message === "User not found") {
-                return res.status(404).json({
-                    message: "User not found",
-                });
-            }
-
-            return res.status(500).json({
-                message: "Unable to delete user",
-            });
-        }
+  // 4. GetAllStudents: Faculty only, student forbidden
+  async getAllStudents(req, res) {
+    try {
+      if (req.user.role !== "faculty") {
+        return res.status(403).json({ message: "Access denied: Only faculty can view all students" });
+      }
+      const students = await userServices.getAllStudents();
+      res.status(200).json({ students });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
     }
+  }
+
+  // 5. GetAllFaculty: Faculty only, student forbidden
+  async getAllFaculty(req, res) {
+    try {
+      if (req.user.role !== "faculty") {
+        return res.status(403).json({ message: "Access denied: Students cannot view faculty data" });
+      }
+      const faculties = await userServices.getAllFaculty();
+      res.status(200).json({ faculties });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  // 6. View student by id: Faculty can view, student can only view self
+  async getStudentById(req, res) {
+    try {
+      const { id } = req.params;
+      if (req.user.role === "student" && req.user.id !== id) {
+        return res.status(403).json({ message: "Access denied: Students can only view their own profile" });
+      }
+      const student = await userServices.getStudentById(id);
+      if (!student) return res.status(404).json({ message: "Student not found" });
+      res.status(200).json({ student, user: student });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  // 7. Update student: Faculty can update any student, student can only update self
+  async updateStudent(req, res) {
+    try {
+      const { id } = req.params;
+      if (req.user.role === "student" && req.user.id !== id) {
+        return res.status(403).json({ message: "Access denied: You can only update your own profile" });
+      }
+      const updated = await userServices.updateStudent(id, req.body);
+      if (!updated) return res.status(404).json({ message: "Student not found" });
+      res.status(200).json({ message: "Student updated successfully", student: updated, user: updated });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  // 8. Delete student: Soft delete only, allowed for faculty
+  async deleteStudent(req, res) {
+    try {
+      const { id } = req.params;
+      if (req.user.role !== "faculty") {
+        return res.status(403).json({ message: "Access denied: Only faculty can delete students" });
+      }
+      const deleted = await userServices.softDelete(id);
+      if (!deleted) return res.status(404).json({ message: "Student not found" });
+      res.status(200).json({ message: "Student soft-deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+
+  // 9. View user by ID:
+  // - Student can only view self
+  // - Faculty can view student, but NO faculty can view another faculty's profile
+  async getUserById(req, res) {
+    try {
+      const { id } = req.params;
+      const user = await userServices.getProfile(id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      if (req.user.role === "student" && req.user.id !== id) {
+        return res.status(403).json({ message: "Access denied: Students can only view their own profile" });
+      }
+      if (req.user.role === "faculty" && user.role === "faculty" && req.user.id !== id) {
+        return res.status(403).json({ message: "Access denied: Faculty cannot view other faculty profiles" });
+      }
+
+      res.status(200).json({ user });
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  }
 }
 
 module.exports = new UserController();

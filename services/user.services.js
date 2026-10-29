@@ -1,72 +1,70 @@
 const User = require("../models/user.model");
 const bcrypt = require("bcrypt");
-const tokenService = require("../jwt/token.json.service");
+const { generateToken } = require("../jwt/token.json.service");
+
 class UserService {
-    async createUser({ name, email, password }) {
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            const error = new Error("Email is already registered");
-            error.code = 11000;
-            throw error;
-        }
+  async signup({ name, email, password, role }) {
+    const existing = await User.findOne({ email });
+    if (existing) throw new Error("Email already registered");
 
-        const hashedPassword = await bcrypt.hash(password, 10);
-        return User.create({
-            name,
-            email,
-            password: hashedPassword,
-        });
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({ name, email, password: hashedPassword, role });
+    
+    const userObj = user.toObject();
+    delete userObj.password;
+    return userObj;
+  }
+
+  async login(email, password) {
+    const user = await User.findOne({ email });
+    if (!user) throw new Error("Invalid email or password");
+    if (user.isDeleted) throw new Error("Account is deleted or deactivated");
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) throw new Error("Invalid email or password");
+
+    // Pass role as payload in JWT token
+    const token = generateToken({ id: user._id, email: user.email, role: user.role });
+
+    const userObj = user.toObject();
+    delete userObj.password;
+    return { user: userObj, token };
+  }
+
+  async getProfile(userId) {
+    return User.findOne({ _id: userId, isDeleted: false }).select("-password");
+  }
+
+  async getAllStudents() {
+    return User.find({ role: "student", isDeleted: false }).select("-password");
+  }
+
+  async getAllFaculty() {
+    return User.find({ role: "faculty", isDeleted: false }).select("-password");
+  }
+
+  async getStudentById(id) {
+    return User.findOne({ _id: id, role: "student", isDeleted: false }).select("-password");
+  }
+
+  async updateStudent(id, data) {
+    if (data.password) {
+      data.password = await bcrypt.hash(data.password, 10);
     }
+    return User.findOneAndUpdate(
+      { _id: id, role: "student", isDeleted: false },
+      data,
+      { returnDocument: "after" }
+    ).select("-password");
+  }
 
-    async signup(name, email, password) {
-        return this.createUser({ name, email, password });
-    }
-    async login(email,password)
-    {
-        const user = await User.findOne({email}).select("+password");
-        if(!user)
-        {
-            throw new Error("User not found");
-        }
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if(!isPasswordValid)
-        {
-            throw new Error("Invalid password");
-        }
-        const payload = { id: user._id, email: user.email ,isActive :user.isActive};
-        const token = tokenService.generateToken(payload);
-        const userWithputPassword = user.toObject();
-        delete userWithputPassword.password;
-        return { user: userWithputPassword, token };
-    }
-
-    async updateUser(userId, updates) {
-        const updateData = { ...updates };
-
-        if (updateData.password) {
-            updateData.password = await bcrypt.hash(updateData.password, 10);
-        }
-
-        const user = await User.findByIdAndUpdate(userId, updateData, {
-            new: true,
-            runValidators: true,
-        });
-
-        if (!user) {
-            throw new Error("User not found");
-        }
-
-        const userResponse = user.toObject();
-        delete userResponse.password;
-        return userResponse;
-    }
-
-    async deleteUser(userId) {
-        const user = await User.findByIdAndDelete(userId);
-
-        if (!user) {
-            throw new Error("User not found");
-        }
-    }
+  async softDelete(id) {
+    return User.findOneAndUpdate(
+      { _id: id, isDeleted: false },
+      { isDeleted: true },
+      { returnDocument: "after" }
+    );
+  }
 }
+
 module.exports = new UserService();

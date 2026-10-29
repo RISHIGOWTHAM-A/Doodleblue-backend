@@ -50,3 +50,6 @@ desktop.ini
 # Temporary files
 tmp/
 temp/
+
+postman_collection.json
+test-runner.js
