@@ -25,8 +25,6 @@ doodleBlue-backend/
 ├── services/
 │   └── user.services.js           # Business logic, query filters, soft-delete operations
 ├── app.js                         # Express application setup
-├── postman_collection.json        # Postman collection for testing
-├── test-runner.js                 # Automated 24-test integration suite
 └── .env                           # Environment configuration
 ```
 
