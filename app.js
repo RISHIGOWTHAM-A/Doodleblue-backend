@@ -1,9 +1,18 @@
 require("dotenv").config();
 const express = require("express");
+const cors = require("cors");
 const connectDB = require("./config/db");
 const userRoutes = require("./routes/user.routes");
 
 const app = express();
+
+// CORS: allow the frontend (Vite dev server) to call this API.
+// Override/extend allowed origins via CLIENT_URL="http://host1,http://host2" in .env
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(",").map((o) => o.trim())
+  : ["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173"];
+
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 // Routes

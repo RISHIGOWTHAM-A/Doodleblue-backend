@@ -1,6 +1,6 @@
 # DoodleBlue Role-Based Backend Authentication & Authorization
 
-Backend API implementation featuring Role-Based Access Control (**RBAC**), JWT session authentication, strict authorization boundaries for **Student** and **Faculty** roles, and **Soft Delete** functionality.
+Backend API implementation featuring Role-Based Access Control (**RBAC**), JWT session authentication, strict authorization boundaries for **Student** and **Faculty** roles, and permanent delete functionality.
 
 ---
 
@@ -62,26 +62,18 @@ Tokens signed by `tokenService` contain:
 | `/api/users/faculties` | `GET` | Faculty only | Get all non-deleted faculties (403 for Students) |
 | `/api/users/students/:id` | `GET` | Faculty or Own Student | View specific student |
 | `/api/users/students/:id` | `PATCH` | Faculty or Own Student | Update student profile |
-| `/api/users/students/:id` | `DELETE` | Faculty only | **Soft-deletes** student (`isDeleted: true`) |
+| `/api/users/students/:id` | `DELETE` | Faculty only | **Permanently deletes** the student record from the database |
 | `/api/users/:id` | `GET` | Faculty or Self | View user. (Faculty **cannot** view other faculty profiles) |
 | `/api/users/:id` | `PATCH` | Faculty or Self | Update user account |
 | `/api/users/:id` | `DELETE` | Self / Faculty | Soft delete user |
 
 ---
 
-## Soft Delete Mechanism
-- Deleted accounts are **never removed** from the database.
-- Marked with:
-  ```json
-  {
-    "isDeleted": true,
-    "isActive": false,
-    "deletedAt": "2026-10-29T..."
-  }
-  ```
-- Soft-deleted users:
-  - Excluded automatically from `getAllStudents` and `getAllFaculty`.
-  - Blocked from logging in (`403 Forbidden: "This account has been deleted or deactivated"`).
+## Delete Mechanism
+- `DELETE /api/users/students/:id` **permanently removes** the document from MongoDB (`findOneAndDelete`).
+- The record cannot be recovered after deletion.
+- The freed email can be registered again.
+- The delete is scoped to `role: "student"`, so faculty accounts can't be removed through this route.
 
 ---
 
@@ -95,7 +87,7 @@ Tokens signed by `tokenService` contain:
    - **Login - Student** (automatically stores `{{studentToken}}` and `{{studentId}}`)
    - **Login - Faculty** (automatically stores `{{facultyToken}}` and `{{facultyId}}`)
    - Test Student permissions (accessing `/students` returns `403 Forbidden`).
-   - Test Faculty permissions (viewing `/students`, updating student, soft deleting student).
+   - Test Faculty permissions (viewing `/students`, updating student, deleting student).
 
 ---
 

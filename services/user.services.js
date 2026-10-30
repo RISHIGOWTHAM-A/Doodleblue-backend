@@ -9,10 +9,13 @@ class UserService {
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await User.create({ name, email, password: hashedPassword, role });
-    
+
+    // Sign a JWT on signup too, so the client can log in immediately
+    const token = generateToken({ id: user._id, email: user.email, role: user.role });
+
     const userObj = user.toObject();
     delete userObj.password;
-    return userObj;
+    return { user: userObj, token };
   }
 
   async login(email, password) {
@@ -58,12 +61,8 @@ class UserService {
     ).select("-password");
   }
 
-  async softDelete(id) {
-    return User.findOneAndUpdate(
-      { _id: id, isDeleted: false },
-      { isDeleted: true },
-      { returnDocument: "after" }
-    );
+  async deleteStudent(id) {
+    return User.findOneAndDelete({ _id: id, role: "student" });
   }
 }
 
